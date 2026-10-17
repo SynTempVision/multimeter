@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OWON XDM1241 Multimeter Control</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Segoe UI, Arial, sans-serif; background: #f6f8fa; margin: 0; padding: 0; }
+  header { background: #2c3e50; color: white; padding: 16px 30px; }
+  header h1 { margin: 0; font-size: 20px; }
+  main { padding: 20px; max-width: 760px; margin: 0 auto; }
+
+  .panel { background: white; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); padding: 18px; margin-bottom: 16px; }
+
+  input[type="number"], select {
+    background: #fff; border: 1px solid #ccc; color: #333;
+    padding: 7px 10px; font-family: inherit; font-size: 14px; border-radius: 5px;
+    width: 100%; box-sizing: border-box;
+  }
+  input:focus, select:focus { outline: none; border-color: #0078D7; }
+
+  .btn {
+    padding: 9px 14px; border: none; border-radius: 5px; font-size: 14px; cursor: pointer;
+    background: #0078D7; color: white; font-family: inherit;
+  }
+  .btn:hover { background: #005A9E; }
+  .btn.secondary { background: #f4f6f8; color: #333; border: 1px solid #ddd; }
+  .btn.secondary:hover { border-color: #0078D7; background: #eef5fb; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+
+  .summary-banner {
+    border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;
+    font-size: 13px; font-weight: 600; line-height: 1.4;
+  }
+  .summary-banner.ok   { background: #e8f7ee; color: #1e8449; border: 1px solid #b7e4c7; }
+  .summary-banner.bad  { background: #fdecea; color: #c0392b; border: 1px solid #f5b7b1; }
+  .summary-banner.info { background: #eef5fb; color: #2c5a80; border: 1px solid #cfe4f7; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #888; padding: 6px 8px; border-bottom: 1px solid #e5e5e5; }
+  td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+  td.value { font-family: Consolas, "Courier New", monospace; font-weight: 600; color: #2c3e50; }
+  td.raw { font-family: Consolas, "Courier New", monospace; color: #999; font-size: 12px; }
+  .empty { color: #999; font-size: 13px; }
+
+  .live-display {
+    background: #1a1a1a; border-radius: 10px; padding: 18px; margin-bottom: 16px;
+    text-align: center;
+  }
+  .live-display .live-value {
+    font-family: Consolas, "Courier New", monospace; font-size: 42px; font-weight: 700;
+    color: #2ecc71; letter-spacing: 1px;
+  }
+  .live-display .live-unit { font-size: 18px; color: #888; margin-left: 8px; }
+  .live-display .live-mode { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #ccc; font-weight: 600; margin-bottom: 6px; }
+
+  /* Split in half: mV on the left, converted K-type temp on the right -
+     always both visible side by side, not one hidden/stacked under the
+     other (2026-10-16: "split the screen in half to show the temp"). */
+  .live-split { display: flex; align-items: center; }
+  .live-half { flex: 1; min-width: 0; }
+  .live-divider { width: 1px; align-self: stretch; background: #333; margin: 4px 16px; }
+  .live-sub-label { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #ccc; font-weight: 600; margin-bottom: 6px; }
+  .live-display .live-temp-value { color: #e67e22; font-size: 34px; }
+  .live-temp-f { font-size: 15px; color: #e67e22; font-weight: 600; margin-top: 2px; }
+  .live-temp-value.placeholder { color: #555; font-size: 16px; font-family: inherit; font-weight: 400; letter-spacing: normal; }
+
+  @media (max-width: 600px) {
+    .live-split { flex-direction: column; }
+    .live-divider { display: none; }
+    .live-half + .live-half { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2a2a2a; }
+  }
+
+  /* Condensed control strip: everything needed to run a reading in one row
+     that wraps naturally on narrow screens instead of stacking into
+     separate cards. */
+  .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; border-top: 1px solid #eee; padding-top: 16px; }
+  .control-group { display: flex; flex-direction: column; gap: 4px; }
+  .control-group label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #888; white-space: nowrap; }
+  #mode-group { flex: 1 1 160px; }
+  #interval-group { flex: 0 1 110px; }
+  #tc-group { flex: 1 1 180px; }
+  .tc-check-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #333; }
+  .tc-check-row input[type="checkbox"] { width: auto; margin: 0; }
+  .buttons-group { display: flex; flex-direction: row; gap: 8px; flex: 2 1 260px; }
+  .buttons-group .btn { flex: 1 1 auto; margin-top: 0; }
+
+  #folder-group { flex: 1 1 220px; }
+  .folder-count { color: #0078D7; font-weight: 700; letter-spacing: normal; text-transform: none; }
+
+  .table-scroll { overflow-x: auto; }
+
+  .chart-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .chart-title { font-size: 13px; font-weight: 600; color: #2c3e50; }
+  #btn-chart-live { padding: 6px 12px; font-size: 12px; margin-top: 0; flex-shrink: 0; }
+  /* Fixed-width viewport showing ~5 min; the canvas itself is sized wider
+     than this by JS when there's more history than that, so the rest is
+     reachable by scrollbar, trackpad, touch swipe, or click-drag (grab)
+     (2026-10-16: "fit about five min on the graph ... rest will be grab
+     and scroll"). Canvas width is NOT stretched by CSS (no width:100%) -
+     its pixel attribute IS its real on-screen size, otherwise overflow-x
+     would have nothing to actually scroll. */
+  .chart-wrap { width: 100%; height: 220px; overflow-x: auto; overflow-y: hidden; cursor: grab; -webkit-overflow-scrolling: touch; display: flex; }
+  .chart-elapsed { text-align: center; font: bold 12px "Segoe UI", Arial, sans-serif; color: #000; margin-top: 2px; }
+  .chart-wrap.dragging { cursor: grabbing; }
+  #trend-chart { display: block; flex-shrink: 0; }
+  /* Frozen Y axes: their own small canvases, pinned to the viewport edges
+     via position:sticky while the big plot canvas between them scrolls
+     underneath - so the mV/temp number scale stays visible past ~5 min of
+     history instead of scrolling off with the data (2026-10-16: "after 5
+     min the scroll should not include the y axises"). */
+  .axis-canvas { display: block; flex-shrink: 0; position: sticky; z-index: 2; background: #fff; }
+  .axis-left { left: 0; }
+  .axis-right { right: 0; }
+
+  @media (max-width: 480px) {
+    main { padding: 14px; }
+    .panel { padding: 14px; }
+    header { padding: 14px 16px; }
+    header h1 { font-size: 17px; }
+    .live-display { padding: 14px; }
+    .live-display .live-value { font-size: 30px; }
+    .live-display .live-temp-value { font-size: 24px; }
+    .live-display .live-unit { font-size: 15px; }
+    table { font-size: 12px; }
+    th, td { padding: 6px 4px; }
+
+    /* Tighter everything - "too much going on" on mobile (2026-10-16) */
+    .controls { gap: 10px; padding-top: 12px; }
+    .control-group { gap: 3px; }
+    .control-group label { font-size: 10px; }
+    .btn { padding: 7px 10px; font-size: 13px; }
+    #interval-group, #tc-group { flex: 1 1 130px; }
+    #duration-group, #folder-group { flex: 1 1 100%; }
+    .buttons-group { flex-direction: row; flex: 1 1 100%; }
+    .chart-header { gap: 6px; }
+    .chart-title { font-size: 12px; }
+    #btn-chart-live { padding: 5px 9px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<header><h1>OWON XDM1241 Multimeter Control</h1></header>
+
+<main>
+
+  <div class="panel">
+    <div id="banner" class="summary-banner info">Checking meter connection...</div>
+
+    <div class="live-display">
+      <div class="live-split">
+        <div class="live-half">
+          <div class="live-mode" id="live-mode">No reading yet</div>
+          <span class="live-value" id="live-value">---</span><span class="live-unit">mV</span>
+        </div>
+        <div class="live-divider"></div>
+        <div class="live-half">
+          <div class="live-sub-label">Type K temp (CJC-comp.)</div>
+          <span class="live-value live-temp-value" id="live-temp-value">---</span><span class="live-unit" id="live-temp-unit">&deg;C</span>
+          <div class="live-temp-f" id="live-temp-f"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="control-group" id="mode-group">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          {% for key, m in modes.items() %}
+            <option value="{{ key }}">{{ m[0] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="control-group" id="interval-group">
+        <label for="interval" title="The live mV/temp display always updates as fast as the meter will answer - this only controls how often a reading gets logged to the table/CSV.">Log interval (s)</label>
+        <input type="number" id="interval" value="1" min="0" max="3600" step="0.1">
+      </div>
+
+      <div class="control-group" id="tc-group">
+        <label for="tc-reference" title="Converts DC Voltage readings to temperature. The real temperature at the probe clips/tips - not the meter's own terminals.">Type K CJC ref (&deg;C)</label>
+        <div style="display:flex; gap:6px;">
+          <input type="number" id="tc-reference" value="25" step="0.1" title="Cold junction reference temp (&deg;C) - the real temperature at the probe clips/tips, not the meter's terminals.">
+          <button class="btn secondary" id="btn-tc-reset" type="button" title="Short the probe tips together, then click to read the meter's own internal CJC temperature" style="margin-top:0; padding: 7px 10px;">&#8635;</button>
+        </div>
+      </div>
+
+      <div class="control-group" id="duration-group">
+        <label for="log-duration">Log for</label>
+        <select id="log-duration">
+          <option value="0" selected>Until stopped</option>
+          <option value="1">1 min</option>
+          <option value="5">5 min</option>
+          <option value="10">10 min</option>
+        </select>
+      </div>
+
+      <div class="control-group" id="folder-group">
+        <label for="log-folder">Log folder <span id="folder-count" class="folder-count"></span></label>
+        <select id="log-folder">
+          {% for suffix in ['A','B','C','D','E','F','G','H','J'] %}
+            <option value="TE-1162{{ suffix }}">TE-1162{{ suffix }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="buttons-group">
+        <button class="btn" id="btn-read" title="Start Log">&#9654;</button>
+        <button class="btn secondary" id="btn-stop" disabled title="Stop Log">&#9632;</button>
+        <button class="btn secondary" id="btn-commit" disabled>Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>#</th><th>Timestamp</th><th>Reading (mV)</th><th>Temp (&deg;C)</th><th>Temp (&deg;F)</th></tr></thead>
+        <tbody id="results"><tr><td colspan="5" class="empty">No readings logged yet.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="chart-header">
+      <div id="chart-title" class="chart-title">Trend - no log yet</div>
+      <button class="btn secondary" id="btn-chart-live" type="button">Live &raquo;</button>
+    </div>
+    <div id="chart-wrap" class="chart-wrap">
+      <canvas id="axis-left" class="axis-canvas axis-left"></canvas>
+      <canvas id="trend-chart" width="680" height="220"></canvas>
+      <canvas id="axis-right" class="axis-canvas axis-right"></canvas>
+    </div>
+    <div id="chart-elapsed" class="chart-elapsed"></div>
+  </div>
+
+</main>
+
+<script>
+var MODES = {{ modes_json | tojson }};
+
+var banner = document.getElementById('banner');
+var liveValue = document.getElementById('live-value');
+var liveMode = document.getElementById('live-mode');
+var liveTempValue = document.getElementById('live-temp-value');
+var liveTempUnit = document.getElementById('live-temp-unit');
+var liveTempF = document.getElementById('live-temp-f');
+var results = document.getElementById('results');
+var modeSelect = document.getElementById('mode');
+var tcReference = document.getElementById('tc-reference');
+
+// Persist the CJC reference across page reloads - it's a plain HTML field
+// with no server-side storage, so it used to snap back to the hardcoded
+// "25" default on every refresh, losing whatever was typed or calibrated
+// (2026-10-16: "when i refresh the page the CJC resets to 25"). localStorage
+// is per-browser only (not synced across devices/tabs), which is fine here -
+// it's just remembering this one field's last value, not real app state.
+(function () {
+  try {
+    var saved = localStorage.getItem('mm_tc_reference');
+    if (saved !== null) tcReference.value = saved;
+  } catch (e) { /* private browsing / storage disabled - just use the default */ }
+})();
+function saveTcReference() {
+  try { localStorage.setItem('mm_tc_reference', tcReference.value); } catch (e) { /* ignore */ }
+}
+tcReference.addEventListener('input', saveTcReference);
+var btnRead = document.getElementById('btn-read');
+var btnStop = document.getElementById('btn-stop');
+var btnCommit = document.getElementById('btn-commit');
+var rowCount = 0;
+var currentSession = null;
+var currentConfiguredMode = null;   // the mode the live session is actually set to right now
+var logging = false;                // "recording" - whether /measure results also get addRow()'d
+var logCount = 0;
+var livePollRunning = false;        // the continuous "video" loop - starts once, keeps running forever
+var loggedReadings = [];   // what Commit to File actually saves - a snapshot of everything logged so far
+
+function setBanner(kind, text) {
+  banner.className = 'summary-banner ' + kind;
+  banner.textContent = text;
+}
+
+function post(path, extra) {
+  var body = new URLSearchParams(extra || {});
+  return fetch(path, { method: 'POST', body: body })
+    .then(function (r) { return r.json(); })
+    .catch(function () { return { ok: false, error: 'No response from the Pi.' }; });
+}
+
+function postJson(path, data) {
+  return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+    .then(function (r) { return r.json(); })
+    .catch(function () { return { ok: false, error: 'No response from the Pi.' }; });
+}
+
+// NIST ITS-90 Type K thermocouple math - exact port of thermocouple_k.py.
+// Coefficients verified 2026-10-15 against two independent sources that
+// agree digit-for-digit (NIST's own its90.nist.gov pages + the
+// thermocouples_reference_devel package). Keep this in sync with
+// thermocouple_k.py if either ever changes - same coefficients, same math.
+var ThermocoupleK = (function () {
+  var FWD_NEG = [
+    0.000000000000E+00, 0.394501280250E-01, 0.236223735980E-04, -0.328589067840E-06,
+    -0.499048287770E-08, -0.675090591730E-10, -0.574103274280E-12, -0.310888728940E-14,
+    -0.104516093650E-16, -0.198892668780E-19, -0.163226974860E-22
+  ];
+  var FWD_POS = [
+    -0.176004136860E-01, 0.389212049750E-01, 0.185587700320E-04, -0.994575928740E-07,
+    0.318409457190E-09, -0.560728448890E-12, 0.560750590590E-15, -0.320207200030E-18,
+    0.971511471520E-22, -0.121047212750E-25
+  ];
+  var A0 = 0.118597600000E+00, A1 = -0.118343200000E-03, A2 = 0.126968600000E+03;
+  var INV_SUBRANGES = [
+    [-5.891, 0.0, [0, 25.173462, -1.1662878, -1.0833638, -0.8977354, -0.37342377, -0.086632643, -0.010450598, -0.00051920577, 0]],
+    [0.0, 20.644, [0, 25.08355, 0.07860106, -0.2503131, 0.0831527, -0.01228034, 0.0009804036, -0.00004413030, 0.000001057734, -0.00000001052755]],
+    [20.644, 54.886, [-131.8058, 48.30222, -1.646031, 0.05464731, -0.0009650715, 0.000008802193, -0.0000000311081, 0, 0, 0]]
+  ];
+
+  function polyval(coeffs, x) {
+    var sum = 0;
+    for (var i = 0; i < coeffs.length; i++) sum += coeffs[i] * Math.pow(x, i);
+    return sum;
+  }
+
+  function emfMv(tempC) {
+    var coeffs = tempC < 0 ? FWD_NEG : FWD_POS;
+    var result = polyval(coeffs, tempC);
+    if (tempC >= 0) result += A0 * Math.exp(A1 * Math.pow(tempC - A2, 2));
+    return result;
+  }
+
+  function tempC(emf) {
+    for (var i = 0; i < INV_SUBRANGES.length; i++) {
+      var lo = INV_SUBRANGES[i][0], hi = INV_SUBRANGES[i][1], coeffs = INV_SUBRANGES[i][2];
+      if (emf >= lo && emf <= hi) return polyval(coeffs, emf);
+    }
+    return NaN;   // outside -5.891 to 54.886 mV (-200 to 1372 C)
+  }
+
+  function compensatedTempC(measuredMv, referenceJunctionTempC) {
+    return tempC(measuredMv + emfMv(referenceJunctionTempC));
+  }
+
+  return { emfMv: emfMv, tempC: tempC, compensatedTempC: compensatedTempC };
+})();
+
+// Shared by the live display and the table/CSV log, so both ever report
+// the exact same number. Always applies - this test is always a K-type
+// thermocouple element (2026-10-16), so there's no "off" state anymore.
+// Returns a Number (°C) when the mode is DC Voltage and the math is in
+// range; NaN if out of range; null if not applicable (non-voltage mode).
+function computeTcTempC(modeKey, raw) {
+  if (modeKey !== 'vdc') return null;
+  var v = parseFloat(raw);
+  var ref = parseFloat(tcReference.value);
+  if (isNaN(v) || isNaN(ref)) return NaN;
+  return ThermocoupleK.compensatedTempC(v * 1e3, ref);   // v is volts; the math wants mV
+}
+
+function cToF(c) { return c * 9 / 5 + 32; }   // "see the temp in C and F" (2026-10-16)
+
+// Always shows millivolts, fixed - unlike formatReading() above, which
+// auto-scales to whatever unit prefix fits the magnitude. This is the raw
+// value the temperature-conversion math needs, so the live display shows
+// exactly that, not an auto-scaled approximation.
+//
+// The raw mV and the CJC-compensated K-type temperature are shown
+// simultaneously, in their own permanent split halves, rather than one
+// replacing the other, stacked, or hidden when not applicable (2026-10-16:
+// "split the screen in half to show the temp. I am not seeing the temp" -
+// the right half used to be display:none until the checkbox/mode made it
+// applicable, which looked like the temp was just missing; now it's always
+// visible, showing a placeholder instead of disappearing).
+// Shared by updateLiveDisplay() and the mode/checkbox-change handlers below,
+// so every path that can make the temp side inapplicable (mode changed,
+// checkbox unchecked) shows the same placeholder instead of leaving stale
+// text on screen.
+function setTempPlaceholder(msg) {
+  liveTempValue.textContent = msg;
+  liveTempValue.classList.add('placeholder');
+  liveTempUnit.style.display = 'none';
+  liveTempF.textContent = '';
+}
+
+function updateLiveDisplay(raw, modeLabel, modeKey) {
+  var v = parseFloat(raw);
+  liveMode.textContent = modeLabel;
+  liveValue.textContent = isNaN(v) ? raw : (v * 1e3).toFixed(3);
+
+  var t = computeTcTempC(modeKey, raw);
+  if (t === null) {
+    setTempPlaceholder('n/a (not DC Voltage)');
+  } else if (isNaN(t)) {
+    liveTempValue.textContent = 'out of range';
+    liveTempValue.classList.remove('placeholder');
+    liveTempUnit.style.display = '';
+    liveTempF.textContent = '';
+  } else {
+    liveTempValue.textContent = t.toFixed(2);
+    liveTempValue.classList.remove('placeholder');
+    liveTempUnit.style.display = '';
+    liveTempF.textContent = cToF(t).toFixed(2) + ' °F';
+  }
+}
+
+// Logs one snapshot - date/time, the reading, and the converted temp, as
+// explicit separate fields (2026-10-16: "the log should show date time and
+// both readings temp and mV"). Every snapshot is kept in loggedReadings
+// (that's the actual history - backs both the CSV and the trend chart
+// below), but the on-page TABLE only ever shows the single latest one,
+// overwritten in place rather than growing a new row per snapshot
+// (2026-10-16: "keep one row for the table ... just overwrite") - a
+// continuous log would otherwise grow the DOM without bound.
+// ISO 8601, LOCAL time (not toISOString()'s UTC) with millisecond precision -
+// standard practice for logged data: sorts correctly as plain text, no
+// AM/PM locale ambiguity, and distinct even at fast logging rates where a
+// whole-second timestamp would repeat across many rows (2026-10-16, found
+// reviewing a real saved CSV: plain toLocaleString() produced 15+ rows that
+// all looked identically timestamped, and the Reading column had " mV"
+// baked into otherwise-numeric text, breaking spreadsheet math/charting -
+// "make all the values readable ... header can have the meaning").
+function isoLocalTimestamp(d) {
+  function pad(n, len) { return String(n).padStart(len || 2, '0'); }
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+    'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) +
+    '.' + pad(d.getMilliseconds(), 3);
+}
+
+var resultsRowBuilt = false;
+function addRow(modeLabel, raw, modeKey) {
+  rowCount++;
+  var timeStr = isoLocalTimestamp(new Date());
+  var t = computeTcTempC(modeKey, raw);
+  var tempText = t === null ? '' : (isNaN(t) ? 'out of range' : t.toFixed(2));
+  var tempFText = (t === null || isNaN(t)) ? '' : cToF(t).toFixed(2);
+  var mvValue = parseFloat(raw) * 1e3;   // numeric mV - raw is volts
+  var mvText = isNaN(mvValue) ? '' : mvValue.toFixed(3);
+
+  if (!resultsRowBuilt) {
+    results.innerHTML =
+      '<tr><td id="r-count"></td><td id="r-time"></td>' +
+      '<td id="r-mv" class="value"></td>' +
+      '<td id="r-temp" class="value"></td><td id="r-temp-f" class="value"></td></tr>';
+    resultsRowBuilt = true;
+  }
+  document.getElementById('r-count').textContent = rowCount;
+  document.getElementById('r-time').textContent = timeStr;
+  document.getElementById('r-mv').textContent = mvText;
+  document.getElementById('r-temp').textContent = tempText;
+  document.getElementById('r-temp-f').textContent = tempFText;
+
+  loggedReadings.push({
+    time: timeStr, mode: modeLabel, mv: mvText, raw: raw,
+    tempC: tempText, tempF: tempFText,
+    ts: Date.now(), mvValue: isNaN(mvValue) ? null : mvValue,
+    tempValue: (t === null || isNaN(t)) ? null : t
+  });
+  btnCommit.disabled = false;
+  renderChart();
+}
+
+var chartWrap = document.getElementById('chart-wrap');
+var TEMP_LABEL_COLOR = '#2563eb';   // bold blue (2026-10-16) - tick/axis TEXT only, not the plotted line
+var TIME_LABEL_COLOR = '#000';      // bold black (2026-10-16)
+var VISIBLE_MINUTES = 5;            // default viewport width - older data is reachable by scroll/drag
+var followLive = true;              // auto-keeps the view pinned to the newest point
+var isProgrammaticScroll = false;   // guards the scroll listener from undoing its own scrollToEnd()
+
+function scrollChartToEnd() {
+  isProgrammaticScroll = true;
+  chartWrap.scrollLeft = chartWrap.scrollWidth;
+  requestAnimationFrame(function () { isProgrammaticScroll = false; });
+}
+
+// Historical trend of everything logged so far - mV on the left axis
+// (green line, matches the live display), K-type temp on the right axis
+// (orange line, same color as the live display), time along the x axis.
+// Title is the current log-folder name, since that's the closest thing to
+// "the file" before a commit actually writes one (2026-10-16). Plain
+// canvas, no charting library - this is a small embedded utility page, not
+// worth a CDN dependency for two lines on a graph.
+//
+// Only ~5 minutes is visible at once - the canvas itself is made wider
+// than the viewport once there's more history than that, so the rest is
+// reached by scrolling/dragging #chart-wrap (2026-10-16: "fit about five
+// min on the graph at a time, the rest will be grab and scroll"). Pinned
+// to the latest point (scrolled all the way right) unless the user has
+// manually scrolled away, same as "Live" on a security-camera timeline.
+var AXIS_W = 52;   // width of each frozen side axis-label canvas
+
+function renderChart() {
+  var canvas = document.getElementById('trend-chart');
+  var leftCanvas = document.getElementById('axis-left');
+  var rightCanvas = document.getElementById('axis-right');
+  var ctx = canvas.getContext('2d');
+  var lctx = leftCanvas.getContext('2d');
+  var rctx = rightCanvas.getContext('2d');
+  var folder = document.getElementById('log-folder').value.trim() || 'log';
+  document.getElementById('chart-title').textContent = folder + ' - trend (' + loggedReadings.length + ' logged)';
+
+  var data = loggedReadings;
+  var h = 220;
+  // Canvas bitmap resolution must match the screen's actual pixel density,
+  // not just its CSS size, or text renders soft on any high-DPI (Retina-
+  // style) screen - every size below is in logical/CSS pixels; this scale
+  // is what maps them onto the real, denser backing store (2026-10-16:
+  // "the text on the trend is so blurry").
+  var dpr = window.devicePixelRatio || 1;
+
+  function sizeCanvas(cv, cctx, cssW, cssH) {
+    cv.width = Math.round(cssW * dpr);
+    cv.height = Math.round(cssH * dpr);
+    cv.style.width = cssW + 'px';
+    cv.style.height = cssH + 'px';
+    cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  sizeCanvas(leftCanvas, lctx, AXIS_W, h);
+  sizeCanvas(rightCanvas, rctx, AXIS_W, h);
+  lctx.clearRect(0, 0, AXIS_W, h);
+  rctx.clearRect(0, 0, AXIS_W, h);
+
+  var viewportW = Math.max(chartWrap.clientWidth - AXIS_W * 2, 200);
+
+  if (data.length < 2) {
+    sizeCanvas(canvas, ctx, viewportW, h);
+    ctx.clearRect(0, 0, viewportW, h);
+    ctx.fillStyle = '#999'; ctx.font = '13px Segoe UI, Arial, sans-serif';
+    ctx.fillText('Log at least 2 readings to see a trend.', 16, h / 2);
+    document.getElementById('chart-elapsed').textContent = '';
+    return;
+  }
+
+  var times = data.map(function (r) { return r.ts; });
+  var minTs = Math.min.apply(null, times), maxTs = Math.max.apply(null, times);
+  if (maxTs === minTs) maxTs = minTs + 1;
+  var totalMinutes = (maxTs - minTs) / 60000;
+  var pxPerMin = viewportW / VISIBLE_MINUTES;
+  var w = Math.max(viewportW, Math.ceil(totalMinutes * pxPerMin));
+
+  sizeCanvas(canvas, ctx, w, h);
+  ctx.clearRect(0, 0, w, h);
+
+  // Only top/bottom padding plus a small side inset now - the mV/temp
+  // NUMBER scales live in the frozen axis-left/axis-right canvases (CSS
+  // position:sticky), not in this scrollable one, so they stay visible
+  // past ~5 min of history instead of scrolling off with the data
+  // (2026-10-16: "after 5 min the scroll should not include the y axises").
+  // padT/plotH must match exactly between this canvas and the two side
+  // canvases below, or the gridlines/lines won't line up with the frozen
+  // tick labels.
+  var padT = 26, padB = 40, padSide = 8;
+  var plotW = w - padSide * 2, plotH = h - padT - padB;
+
+  function xAt(ts) { return padSide + (ts - minTs) / (maxTs - minTs) * plotW; }
+
+  function axisRange(key) {
+    var vals = data.map(function (r) { return r[key]; }).filter(function (v) { return v !== null && !isNaN(v); });
+    if (vals.length === 0) return null;
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    if (hi === lo) { lo -= 1; hi += 1; }
+    var pad = (hi - lo) * 0.1;
+    return { lo: lo - pad, hi: hi + pad };
+  }
+
+  var mvRange = axisRange('mvValue');
+  var tempRange = axisRange('tempValue');
+
+  function drawLine(key, range, color) {
+    if (!range) return;
+    ctx.beginPath();
+    var started = false;
+    data.forEach(function (r) {
+      var v = r[key];
+      if (v === null || isNaN(v)) { started = false; return; }
+      var x = xAt(r.ts), y = padT + plotH - (v - range.lo) / (range.hi - range.lo) * plotH;
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+    });
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Faint horizontal gridlines across the scrollable plot, tied to the mV
+  // scale - their number labels live in the frozen axis-left canvas below.
+  if (mvRange) {
+    ctx.strokeStyle = '#2ecc7155'; ctx.lineWidth = 1;
+    [0, 0.5, 1].forEach(function (f) {
+      var y = padT + plotH * (1 - f);
+      ctx.beginPath(); ctx.moveTo(padSide, y); ctx.lineTo(w - padSide, y); ctx.stroke();
+    });
+  }
+
+  // x-axis time ticks + elapsed title - these legitimately scroll with the
+  // data (different visible windows show different time labels), unlike
+  // the frozen mV/temp number scales.
+  var elapsedS = Math.round((maxTs - minTs) / 1000);
+  var elapsedLabel = elapsedS < 60
+    ? elapsedS + 's'
+    : (elapsedS < 3600
+        ? Math.floor(elapsedS / 60) + 'm ' + (elapsedS % 60) + 's'
+        : Math.floor(elapsedS / 3600) + 'h ' + Math.floor((elapsedS % 3600) / 60) + 'm');
+
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillStyle = TIME_LABEL_COLOR; ctx.textAlign = 'center';
+  [0, 0.5, 1].forEach(function (f) {
+    var ts = minTs + f * (maxTs - minTs);
+    var x = padSide + f * plotW;
+    ctx.fillText(new Date(ts).toLocaleTimeString(), x, h - 22);
+  });
+  // Elapsed total is drawn as a fixed HTML label BELOW chart-wrap, not on
+  // this canvas - this canvas scrolls once total elapsed exceeds
+  // VISIBLE_MINUTES, so a canvas-drawn label centered on the full data
+  // width (not the visible viewport) would scroll out of view while
+  // following live, appearing "cut off" on mobile (2026-10-16).
+  document.getElementById('chart-elapsed').textContent = 'Time - ' + elapsedLabel;
+
+  drawLine('mvValue', mvRange, '#2ecc71');
+  drawLine('tempValue', tempRange, TEMP_LABEL_COLOR);
+
+  // Frozen left axis (mV, green) - own small sticky canvas
+  if (mvRange) {
+    lctx.font = 'bold 12px Segoe UI, Arial, sans-serif';
+    lctx.fillStyle = '#2ecc71'; lctx.textAlign = 'left';
+    lctx.fillText('mV', 4, 14);
+    lctx.font = 'bold 11px Consolas, monospace';
+    lctx.textAlign = 'right';
+    [0, 0.5, 1].forEach(function (f) {
+      var y = padT + plotH * (1 - f);
+      var val = mvRange.lo + f * (mvRange.hi - mvRange.lo);
+      lctx.fillText(val.toFixed(2), AXIS_W - 4, y + 4);
+    });
+  }
+
+  // Frozen right axis (temp, bold blue) - own small sticky canvas
+  if (tempRange) {
+    rctx.font = 'bold 12px Segoe UI, Arial, sans-serif';
+    rctx.fillStyle = TEMP_LABEL_COLOR; rctx.textAlign = 'left';
+    rctx.fillText('°C', 4, 14);
+    rctx.font = 'bold 11px Consolas, monospace';
+    [0, 0.5, 1].forEach(function (f) {
+      var y = padT + plotH * (1 - f);
+      var val = tempRange.lo + f * (tempRange.hi - tempRange.lo);
+      rctx.fillText(val.toFixed(1), 4, y + 4);
+    });
+  }
+
+  if (followLive) scrollChartToEnd();
+}
+
+document.getElementById('btn-chart-live').addEventListener('click', function () {
+  followLive = true;
+  scrollChartToEnd();
+});
+
+// Scrolling (or dragging) away from the right edge drops followLive, so a
+// render mid-review of older history doesn't yank the view back to "now"
+// out from under the user; scrolling/dragging back to the edge resumes it.
+chartWrap.addEventListener('scroll', function () {
+  if (isProgrammaticScroll) return;
+  var atEnd = chartWrap.scrollLeft + chartWrap.clientWidth >= chartWrap.scrollWidth - 2;
+  followLive = atEnd;
+});
+
+// Click-and-drag ("grab and scroll") panning for desktop/mouse - touch
+// devices already get native swipe-scroll from overflow-x:auto.
+(function () {
+  var dragging = false, startX = 0, startScroll = 0;
+  chartWrap.addEventListener('pointerdown', function (e) {
+    dragging = true; startX = e.clientX; startScroll = chartWrap.scrollLeft;
+    chartWrap.classList.add('dragging');
+  });
+  window.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    chartWrap.scrollLeft = startScroll - (e.clientX - startX);
+  });
+  window.addEventListener('pointerup', function () {
+    dragging = false; chartWrap.classList.remove('dragging');
+  });
+})();
+
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+// Makes sure we hold a session configured for modeKey, reusing the current
+// one if it's already set to that mode rather than re-configuring every
+// single tick. Called every loop iteration - cheap when nothing changed,
+// and this is also how the loop recovers after a dropped connection: any
+// measure() failure below clears currentSession, so the very next tick
+// comes back through here and re-configures (which re-discovers the port
+// server-side) instead of retrying a dead session forever.
+async function ensureSession(modeKey) {
+  if (currentSession && currentConfiguredMode === modeKey) return true;
+  var res = await post('/configure', { mode: modeKey });
+  if (!res.ok) { setBanner('bad', res.error); return false; }
+  currentSession = res.session;
+  currentConfiguredMode = modeKey;
+  return true;
+}
+
+// The continuous "video" - like the user put it (2026-10-16): the live
+// mV/temp display is always running once the meter's connected, the same
+// way a camera is always rolling. "Start Log"/"Stop Log" don't start or
+// stop this loop - they just flip the `logging` flag, which is like taking
+// a snapshot of each frame as it goes by (addRow()) instead of letting it
+// pass unrecorded. Runs forever once started; only page reload stops it.
+//
+// The display itself always polls as fast as the meter will answer (no
+// sleep tied to the Interval field - "the interval for the live display
+// should always be ... High", 2026-10-16). The Interval field only
+// controls how often a polled reading actually becomes a logged row -
+// lastLogTime below gates that, completely separate from this loop's own
+// pacing.
+var lastLogTime = 0;
+
+async function livePollLoop() {
+  if (livePollRunning) return;
+  livePollRunning = true;
+  while (true) {
+    var modeKey = modeSelect.value;
+    var mode = MODES[modeKey];
+    var ok = await ensureSession(modeKey);
+    if (!ok) { await sleep(1500); continue; }
+
+    var res = await post('/measure', { session: currentSession });
+    if (!res.ok) {
+      currentSession = null;   // force ensureSession() to reconnect next tick
+      setBanner('bad', res.error);
+      await sleep(1500);
+      continue;
+    }
+
+    updateLiveDisplay(res.reply, mode.label, modeKey);
+
+    if (logging) {
+      var logIntervalMs = Math.max(0, parseFloat(document.getElementById('interval').value) || 0) * 1000;
+      var now = Date.now();
+      if (now - lastLogTime >= logIntervalMs) {
+        lastLogTime = now;
+        logCount++;
+        addRow(mode.label, res.reply, modeKey);
+        setBanner('info', 'Logging ' + mode.label + ' (' + logCount + ' so far)...');
+      }
+    } else {
+      setBanner('ok', 'Live: ' + mode.label + ' - not logging.');
+    }
+
+    await sleep(150);   // throttle: was back-to-back (~8-10/sec), hammering the Pi's single core
+  }
+}
+
+// Reflects the meter's ACTUAL current mode (queried via FUNC?) into the
+// dropdown - picks up a mode change made on the meter's own front-panel
+// buttons, not just ones made from this page. Also updates
+// currentConfiguredMode so livePollLoop() doesn't immediately fight the
+// front-panel change by reconfiguring back to the old dropdown value.
+// Setting .value via JS does NOT fire a 'change' event, so this never
+// loops back into the dropdown's own 'change' handler below.
+function pollCurrentMode() {
+  post('/current-mode').then(function (res) {
+    if (!res.ok || !res.mode || res.mode === modeSelect.value) return;
+    modeSelect.value = res.mode;
+    currentConfiguredMode = res.mode;
+    liveMode.textContent = MODES[res.mode].label + ' (set on meter)';
+    if (res.mode !== 'vdc') setTempPlaceholder('n/a (not DC Voltage)');
+  });
+}
+
+// Checks meter connection, updates the banner, and starts the live video
+// loop the first time it succeeds. After that the loop itself owns the
+// banner, so this just stays quiet on success - no point fighting it every
+// 5s with the same "Connected" text.
+function checkMeter(showErrors) {
+  return post('/idn').then(function (res) {
+    if (res.ok) {
+      if (!livePollRunning) { setBanner('ok', 'Connected to meter: ' + res.reply); livePollLoop(); }
+    } else if (showErrors) {
+      setBanner('bad', res.error);
+    }
+    return res;
+  });
+}
+
+// Auto-check once on page load, then keep re-checking every 5s in case the
+// meter wasn't plugged in yet (once the loop is running, this effectively
+// goes idle - livePollLoop() already proves the connection every tick).
+checkMeter(true);
+pollCurrentMode();
+renderChart();
+setInterval(function () { checkMeter(false); pollCurrentMode(); }, 5000);
+
+// "see how many log files have been saved for that TC" (2026-10-16) - a
+// live count next to the folder field, not just mentioned once in the
+// Save success banner. Refreshed whenever the folder changes and right
+// after a save (where the count just went up by one).
+var folderCountEl = document.getElementById('folder-count');
+var logFolderSelect = document.getElementById('log-folder');
+
+// Same persistence as the CJC reference (2026-10-16: "same for file name") -
+// the folder dropdown used to reset to TE-1162A on every page reload.
+(function () {
+  try {
+    var savedFolder = localStorage.getItem('mm_log_folder');
+    if (savedFolder !== null) logFolderSelect.value = savedFolder;
+  } catch (e) { /* private browsing / storage disabled - just use the default */ }
+})();
+
+function refreshFolderCount() {
+  var folder = logFolderSelect.value.trim();
+  try { localStorage.setItem('mm_log_folder', folder); } catch (e) { /* ignore */ }
+  fetch('/folder-count?folder=' + encodeURIComponent(folder))
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      folderCountEl.textContent = res.ok ? '(' + res.count + ' saved)' : '';
+    })
+    .catch(function () { folderCountEl.textContent = ''; });
+}
+logFolderSelect.addEventListener('change', function () { renderChart(); refreshFolderCount(); });
+refreshFolderCount();
+
+// The other direction: changing the dropdown on this page pushes that mode
+// to the real meter immediately, rather than waiting for the loop's next
+// tick to notice the dropdown changed.
+modeSelect.addEventListener('change', function () {
+  post('/configure', { mode: modeSelect.value }).then(function (res) {
+    if (!res.ok) { setBanner('bad', res.error); return; }
+    currentSession = res.session;
+    currentConfiguredMode = modeSelect.value;
+    liveMode.textContent = MODES[modeSelect.value].label + ' (set from page)';
+    if (modeSelect.value !== 'vdc') setTempPlaceholder('n/a (not DC Voltage)');
+  });
+});
+
+// "the user shorts the leads and it grabs a new reading and updates the
+// CJC Ref value" (2026-10-16) - NOT a reset to a default. Briefly borrows
+// the meter (via /calibrate-cjc) to take one internal-KITS90 reading,
+// valid only because the leads are shorted at that moment, then fills the
+// result straight into tc-reference - the very next logged reading picks
+// it up immediately.
+document.getElementById('btn-tc-reset').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true;
+  setBanner('info', 'Reading CJC from meter (leads should be shorted now)...');
+  post('/calibrate-cjc').then(function (res) {
+    btn.disabled = false;
+    if (res.ok) {
+      tcReference.value = res.temp_c.toFixed(2);
+      saveTcReference();
+      setBanner('ok', 'CJC ref set to ' + res.temp_c.toFixed(2) + ' °C from meter.');
+    } else {
+      setBanner('bad', res.error);
+    }
+  });
+});
+
+// Start Log / Stop Log (and the 1/5/10 min quick presets below) only
+// toggle the `logging` flag - the live video loop itself is already
+// running and keeps running either way (2026-10-16: "it doesn't have to
+// log to show live instant readings"). autoStopTimer holds whichever
+// preset's scheduled auto-stop, if any, so a manual Stop or a different
+// preset clicked mid-run cancels the stale one instead of stacking.
+var autoStopTimer = null;
+
+function startLogging() {
+  if (autoStopTimer) { clearTimeout(autoStopTimer); autoStopTimer = null; }
+  logging = true;
+  logCount = 0;
+  lastLogTime = 0;   // log the very next reading immediately, don't wait out a stale interval
+  btnRead.disabled = true;
+  btnStop.disabled = false;
+}
+
+function stopLogging(reasonPrefix) {
+  if (autoStopTimer) { clearTimeout(autoStopTimer); autoStopTimer = null; }
+  logging = false;
+  btnRead.disabled = false;
+  btnStop.disabled = true;
+  setBanner('ok', (reasonPrefix || 'Stopped logging - ') + logCount + ' reading' + (logCount === 1 ? '' : 's') + ' logged.');
+}
+
+// A dropdown instead of separate quick-duration buttons, plus explicit
+// Start/Stop buttons rather than folding Start into the duration control
+// (2026-10-16: "for log time ... a drop down not quick buttons. and i need
+// a start and stop button"). "Until stopped" (value 0) just means no
+// auto-stop timer gets scheduled.
+btnRead.addEventListener('click', function () {
+  startLogging();
+  var mins = parseFloat(document.getElementById('log-duration').value) || 0;
+  if (mins > 0) {
+    autoStopTimer = setTimeout(function () {
+      stopLogging('Auto-stopped after ' + mins + ' min - ');
+    }, mins * 60 * 1000);
+  }
+});
+
+btnStop.addEventListener('click', function () { stopLogging('Stopped logging - '); });
+
+// Saves everything logged so far to a file on the Pi, then clears the
+// buffer/table/chart so the next reading starts a brand new log rather
+// than appending onto an ever-growing one (2026-10-16: "saving a file
+// should save the log data and start a new one"). Logging itself (the
+// `logging` flag) is untouched - if it was running, it keeps running into
+// the now-empty buffer, so Save works as a checkpoint/rotation, not a stop.
+btnCommit.addEventListener('click', function () {
+  if (loggedReadings.length === 0) { setBanner('bad', 'Nothing to save yet - no readings logged.'); return; }
+  btnCommit.disabled = true;
+  var folder = document.getElementById('log-folder').value.trim();
+  postJson('/commit', { folder: folder, readings: loggedReadings }).then(function (res) {
+    if (res.ok) {
+      setBanner('ok', 'Saved ' + res.count + ' reading' + (res.count === 1 ? '' : 's') + ' to ' + res.path + ' - starting a new log.');
+      loggedReadings = [];
+      rowCount = 0;
+      logCount = 0;
+      lastLogTime = 0;
+      resultsRowBuilt = false;
+      results.innerHTML = '<tr><td colspan="5" class="empty">No readings logged yet.</td></tr>';
+      renderChart();
+      refreshFolderCount();
+    } else {
+      btnCommit.disabled = false;
+      setBanner('bad', res.error);
+    }
+  });
+});
+</script>
+
+</body>
+</html>
