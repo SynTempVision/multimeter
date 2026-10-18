@@ -1,0 +1,26 @@
+#!/bin/bash
+# Choose what the Pi does at next boot.
+#   mm-mode                    show current mode
+#   sudo mm-mode field         hotspot at every boot (default)
+#   sudo mm-mode maintenance   join Tripoli/FIC at boot if in range, else hotspot
+set -u
+FLAG=/boot/firmware/mm-maintenance
+
+show() {
+  if [ -e "$FLAG" ]; then
+    echo "Mode at next boot: MAINTENANCE (joins Tripoli/FIC if in range within 60 s, otherwise hotspot)"
+  else
+    echo "Mode at next boot: FIELD (MultimeterNode hotspot immediately)"
+  fi
+}
+
+case "${1:-status}" in
+  status) show ;;
+  maintenance)
+    [ "$(id -u)" -eq 0 ] || { echo "Use: sudo mm-mode maintenance" >&2; exit 1; }
+    touch "$FLAG" && sync && show && echo "Reboot to apply: sudo reboot" ;;
+  field)
+    [ "$(id -u)" -eq 0 ] || { echo "Use: sudo mm-mode field" >&2; exit 1; }
+    rm -f "$FLAG" && sync && show && echo "Reboot to apply: sudo reboot" ;;
+  *) echo "Usage: mm-mode [status|field|maintenance]" >&2; exit 1 ;;
+esac

@@ -1,0 +1,14 @@
+[Unit]
+Description=MultimeterNode: hotspot at boot (or saved WiFi in maintenance mode)
+Wants=NetworkManager.service
+After=NetworkManager.service
+RequiresMountsFor=/boot/firmware
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/mm-netselect.sh
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
