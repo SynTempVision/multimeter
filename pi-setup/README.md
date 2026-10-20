@@ -76,6 +76,27 @@ Rollbacks (read-only must be off first):
 `sudo bash /var/backups/mm-ro-<timestamp>/rollback-ro.sh`, then
 `sudo bash /var/backups/mm-newpi-<timestamp>/rollback-newpi.sh`.
 
+## Cloning a card for a second Pi (MultimeterNode2)
+
+A straight copy of the card would broadcast the same hotspot name and use the
+same hostname, machine-id and SSH host keys as the original. `clone/mm-rename.sh`
+fixes that on the clone's first boot, with no SSH needed:
+
+1. Write the backup image to the new card (`gunzip -c <image>.img.gz | sudo dd of=/dev/rdiskN bs=4m`).
+2. On the clone's `bootfs`:
+   - copy `clone/mm-rename.sh` to `bootfs/mm-rename.sh`
+   - copy `cmdline.txt` to `cmdline.final` (the normal read-only boot line)
+   - in `cmdline.txt`, remove the leading `overlayroot=tmpfs:recurse=0 ` and
+     append `systemd.run=/boot/firmware/mm-rename.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target`
+3. Boot it. It restores `cmdline.final` first, renames the hotspot to
+   `MultimeterNode2` and the host to `multimeter2`, regenerates machine-id and
+   SSH host keys, disables cloud-init (which would rename it back), disables
+   itself (`mm-rename.sh.done`) and reboots into field mode with read-only on.
+   Log: `bootfs/mm-rename.log`. About 5 minutes.
+
+For a third Pi, change `MultimeterNode2` / `multimeter2` in the script.
+The hotspot address stays `192.168.225.1` (each Pi is its own network).
+
 ## Gotchas found the hard way
 
 - **Use `overlayroot=tmpfs:recurse=0`, not plain `overlayroot=tmpfs`.** The
