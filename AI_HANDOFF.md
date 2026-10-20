@@ -39,6 +39,8 @@ is about *how to keep working on it*, not what it does.
    scp "C:\Users\synte\sandbox\OWON-XDM1241\pi_multimeter\templates\index.html" multimeter@172.17.17.130:~/pi_multimeter/templates/index.html
    scp "C:\Users\synte\sandbox\OWON-XDM1241\pi_multimeter\app.py" multimeter@172.17.17.130:~/pi_multimeter/app.py
    ```
+   **Read-only mode is on** - turn it off first (`pi-setup/README.md`),
+   otherwise the change disappears at the next reboot.
 3. Restart the service so it's picked up:
    ```
    ssh multimeter@172.17.17.130
@@ -93,12 +95,12 @@ is about *how to keep working on it*, not what it does.
    button (`/calibrate-cjc` route). Neither is continuous/automatic. The
    plan is a DS18B20 one-wire sensor (~$2-5) taped to the probe clip, read
    over GPIO, auto-filling the reference field - not yet started.
-2. **WiFi**: a second NetworkManager connection profile, `MultimeterNode`
-   (AP mode, password `password`, static `192.168.225.1/24`), was just
-   created for field use without the lab's "FIC" WiFi available. It's
-   switch-only (not concurrent with FIC) - deliberate, see README's Network
-   section for why concurrent AP+STA wasn't worth the added fragility for
-   this project's actual use case. Switch commands are in the README.
+2. **WiFi / field setup** (rebuilt 2026-10-17 on a new SD card): hotspot
+   `MultimeterNode` (hostapd + dnsmasq, `192.168.225.1`) starts at every
+   boot in field mode; `sudo mm-mode maintenance` makes it join FIC/home
+   WiFi instead. The root filesystem is **read-only (overlayroot, RAM OS)**,
+   with CSV logs on a persistent ext4 image. Any code deploy must turn
+   read-only off first or it is lost at reboot - see `pi-setup/README.md`.
 3. **No real multi-channel support** - one physical meter/probe set. If this
    project ever needs multiple thermocouples logged simultaneously, that's
    a real hardware limitation (would need multiple meters or a different

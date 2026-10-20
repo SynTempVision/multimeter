@@ -30,24 +30,25 @@ math" below.
 
 ## Network
 
-- Host: `multimeter@172.17.17.130` (hostname `multimeter`), on the "FIC"
+- Host: `multimeter@172.17.17.130` (hostname `multimeter`) on the "FIC"
   WiFi, NetworkManager-managed (`netplan-wlan0-FIC` connection profile).
-- A second WiFi profile, `MultimeterNode` (AP mode, WPA2 password
-  `password`, static `192.168.225.1/24`, own DHCP via NetworkManager's
-  `ipv4.method=shared`), exists for field use with no FIC signal available.
-  **Exclusive, not concurrent** - activating one drops the other, since both
-  are bound to the same physical `wlan0` radio (deliberate choice over a
-  virtual-interface concurrent AP+STA setup - not worth the added fragility
-  for this project's actual use case). Switch with:
-  ```
-  sudo nmcli connection up MultimeterNode     # go standalone AP
-  sudo nmcli connection up netplan-wlan0-FIC  # back to the lab network
-  ```
+  A home WiFi profile is also saved for maintenance.
+- **Field use:** the Pi broadcasts its own hotspot `MultimeterNode`
+  (WPA2, static `192.168.225.1/24`, DHCP from dnsmasq) at every boot by
+  default - dashboard at `http://192.168.225.1:5000`. Hotspot and client
+  WiFi are exclusive (one `wlan0` radio).
+- Boot behavior is switched with `sudo mm-mode field|maintenance` + reboot
+  (maintenance = join FIC/home WiFi if in range, else hotspot). The root
+  filesystem is **read-only (RAM OS)** so the Pi can be unplugged at any
+  time; CSV logs go to a separate persistent image. Full details, rebuild
+  steps and gotchas: [`pi-setup/README.md`](pi-setup/README.md).
 
 ## Running it
 
-Deployed files live at `~/pi_multimeter/` on the Pi. After editing locally,
-push with `scp` and restart the service:
+Deployed files live at `~/pi_multimeter/` on the Pi. **Read-only mode is
+on**, so turn it off first or the change is lost at the next reboot (see
+[`pi-setup/README.md`](pi-setup/README.md#changing-code-or-settings-read-only-is-on)).
+After editing locally, push with `scp` and restart the service:
 ```
 scp "C:\Users\synte\sandbox\OWON-XDM1241\pi_multimeter\templates\index.html" multimeter@172.17.17.130:~/pi_multimeter/templates/index.html
 scp "C:\Users\synte\sandbox\OWON-XDM1241\pi_multimeter\app.py" multimeter@172.17.17.130:~/pi_multimeter/app.py
@@ -82,8 +83,8 @@ systemctl status mm-control.service          # check it's up
 journalctl -u mm-control.service -f          # tail logs
 ```
 
-Open `http://172.17.17.130:5000/` from any browser on the LAN (or on
-`MultimeterNode`/`192.168.225.1:5000` in standalone AP mode).
+Open `http://172.17.17.130:5000/` from any browser on the LAN (or
+`http://192.168.225.1:5000` on the `MultimeterNode` hotspot).
 
 The page sends `Cache-Control: no-store` on every response - it gets edited
 and redeployed constantly during development, and a stale cached page after
@@ -202,6 +203,9 @@ utility page. Canvas backing-store resolution is scaled to
   "shorted leads" calibrate button.
 - No real multi-TC-channel support - one meter, one set of probes, logs
   organized by folder name only (manual context-switch between elements).
-- `wpa-psk` password on `MultimeterNode` (`password`) is intentionally weak
+- MultimeterNode hotspot password is intentionally weak
   - single-purpose LAN/field tool, matches this whole project's "no auth"
     threat model (deliberate, 2026-10-15/16).
+- Pi has no RTC: in the field (no internet) its clock is wrong, so CSV
+  filenames carry the wrong date/time. Row timestamps come from the
+  browser and are correct.

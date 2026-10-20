@@ -1,0 +1,13 @@
+[Unit]
+Description=OWON XDM1241 multimeter control
+After=network.target
+
+[Service]
+ExecStart=/home/multimeter/pi_multimeter/venv/bin/python /home/multimeter/pi_multimeter/app.py
+WorkingDirectory=/home/multimeter/pi_multimeter
+Restart=always
+RestartSec=2
+User=multimeter
+
+[Install]
+WantedBy=multi-user.target
