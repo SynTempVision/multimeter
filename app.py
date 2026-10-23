@@ -28,6 +28,8 @@ from flask import Flask, jsonify, render_template, request
 import serial
 from serial.tools import list_ports
 
+from ohms_test import OhmsTestState
+
 app = Flask(__name__)
 
 BAUD = 115200
@@ -292,6 +294,27 @@ class Meter:
 
 
 meter = Meter()
+ohms_state = OhmsTestState()
+
+
+def save_ohms_test(state):
+    # Own subfolder, own CSV schema - separate from /commit's thermocouple-
+    # reading schema (Mode/mV/V/Temp columns don't apply here). Blank cell
+    # for any pair that got skipped via "next" instead of logged - no
+    # pass/fail judgment yet, just the raw readings (2026-10-22 decision:
+    # "for now we can just record").
+    folder = safe_folder_name("OhmsTest")
+    target_dir = LOGS_DIR / folder
+    target_dir.mkdir(parents=True, exist_ok=True)
+    iteration = len(list(target_dir.glob("*.csv"))) + 1
+    filename = f"OhmsTest_{state.serial}_{time.strftime('%Y%m%d_%H%M%S')}_{iteration}.csv"
+    ts = time.strftime('%Y-%m-%d %H:%M:%S')
+    with open(target_dir / filename, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "Serial Number", "Element Count", "Pair", "Reading"])
+        for label, _, _ in state.pairs:
+            writer.writerow([ts, state.serial, state.element_count, label, state.readings.get(label, "")])
+    return filename
 
 
 # This page gets edited and redeployed constantly during development, and a
@@ -371,6 +394,83 @@ def commit():
         for r in readings:
             writer.writerow([r.get("time", ""), r.get("mode", ""), r.get("mv", ""), r.get("raw", ""), r.get("tempC", ""), r.get("tempF", "")])
     return jsonify({"ok": True, "filename": filename, "path": f"{folder}/{filename}", "count": len(readings)})
+
+
+@app.route("/ohms-test")
+def ohms_test_page():
+    return render_template("ohms_test.html")
+
+
+@app.route("/ohms-start", methods=["POST"])
+def ohms_start():
+    data = request.get_json(silent=True) or {}
+    n = data.get("element_count")
+    if n not in (1, 2, 3):
+        return jsonify({"ok": False, "error": "element_count must be 1, 2, or 3"})
+    # Page only collects the digits - the "SN" prefix is fixed (2026-10-23).
+    sn_digits = str(data.get("serial_digits", "")).strip()
+    if not sn_digits.isdigit():
+        return jsonify({"ok": False, "error": "Serial number must be digits only"})
+
+    ohms_state.start(n, "SN" + sn_digits)
+    # Automates what would otherwise be a manual dial switch - the meter is
+    # commanded into resistance mode the same way the live-reading page
+    # does via /configure, no physical knob needed.
+    res = meter.start_session('res')
+    if not res.get("ok"):
+        ohms_state.active = False
+        return jsonify({"ok": False, "error": res.get("error")})
+
+    ohms_state.session_id = res["session"]
+    state_out = ohms_state.as_dict()
+    state_out["session"] = ohms_state.session_id
+    return jsonify({"ok": True, "state": state_out})
+
+
+@app.route("/ohms-capture", methods=["POST"])
+def ohms_capture():
+    # Uses the page's own live-polled reading instead of querying the meter
+    # again here - the page already holds the session open via its own
+    # continuous /measure polling (same as the live-reading page), which is
+    # also what keeps this session from hitting SESSION_IDLE_TIMEOUT during
+    # the stabilization wait between pairs.
+    data = request.get_json(silent=True) or {}
+    value = data.get("last_reading")
+    if not ohms_state.active or not ohms_state.session_id or value is None:
+        return jsonify({"ok": False, "error": "No active test or no live reading yet."})
+
+    # No auto-save on completion (2026-10-23) - session stays open so any
+    # row can still be redone; /ohms-save writes the CSV once, explicitly.
+    ohms_state.capture(value)
+
+    state_out = ohms_state.as_dict()
+    state_out["session"] = ohms_state.session_id
+    return jsonify({"ok": True, "state": state_out})
+
+
+@app.route("/ohms-save", methods=["POST"])
+def ohms_save():
+    if not ohms_state.is_complete():
+        return jsonify({"ok": False, "error": "Test not complete yet."})
+    if ohms_state.saved_filename is None:
+        meter.end_session(ohms_state.session_id)
+        ohms_state.saved_filename = save_ohms_test(ohms_state)
+    state_out = ohms_state.as_dict()
+    state_out["session"] = None
+    return jsonify({"ok": True, "state": state_out})
+
+
+@app.route("/ohms-redo", methods=["POST"])
+def ohms_redo():
+    data = request.get_json(silent=True) or {}
+    label = data.get("label")
+    if not ohms_state.active or ohms_state.saved_filename:
+        return jsonify({"ok": False, "error": "No active test."})
+
+    ohms_state.redo(label)
+    state_out = ohms_state.as_dict()
+    state_out["session"] = ohms_state.session_id
+    return jsonify({"ok": True, "state": state_out})
 
 
 if __name__ == "__main__":

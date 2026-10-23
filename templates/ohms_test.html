@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ohms Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1a2b4a;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+    h2 { margin-bottom: 16px; font-size: 24px; letter-spacing: 1px; }
+
+    /* --- head diagram --- */
+    #diagram-wrap {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      margin-bottom: 10px;
+    }
+    #diagram-ring {
+      position: absolute;
+      left: 5px;
+      top: 5px;
+      width: 210px;
+      height: 210px;
+      border: 4px solid #000;
+      border-radius: 50%;
+      box-sizing: border-box;
+    }
+    .node {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      margin-left: -20px;
+      margin-top: -20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 13px;
+      color: white;
+      border: 3px solid #1a2b4a;
+      box-shadow: inset 0 0 0 3px rgba(0,0,0,0.25);
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    /* screw-head slot across the middle, like a real terminal screw */
+    .node::after {
+      content: "";
+      width: 60%;
+      height: 3px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 2px;
+    }
+    /* red terminals show a + instead of the plain screw-slot bar */
+    .node.red::after { display: none; }
+    .node.red::before {
+      content: "+";
+      font-size: 22px;
+      line-height: 1;
+      color: rgba(0,0,0,0.6);
+    }
+    .node.red { background: #c0392b; }
+    .node.black { background: #2c2c2c; }
+    .node.gnd { background: #5a5a5a; }
+    .node.gnd::after {
+      content: "GND";
+      width: auto;
+      height: auto;
+      background: none;
+      font-size: 10px;
+      font-weight: bold;
+      color: white;
+    }
+    .node.active { border-color: #00ff55; box-shadow: inset 0 0 0 3px rgba(0,0,0,0.25), 0 0 10px 3px #00ff55; }
+    .node.dimmed { opacity: 0.25; }
+
+    #progress { margin-top: 4px; color: #a0c4ff; font-size: 15px; }
+
+    /* --- element count select --- */
+    #count-select { display: flex; gap: 12px; margin-top: 10px; }
+    .count-btn {
+      background: #263d6a;
+      border: 2px solid #4a90d9;
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+      border-radius: 10px;
+      width: 56px;
+      height: 56px;
+      cursor: pointer;
+    }
+    .count-btn.selected { background: #4a90d9; }
+
+    #start-btn, #next-fallback {
+      margin-top: 20px;
+      background: #4a90d9;
+      color: white;
+      border: none;
+      padding: 18px 50px;
+      font-size: 20px;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 90%;
+      max-width: 360px;
+    }
+    #start-btn:disabled { background: #2e3f5c; color: #7a8aa8; cursor: not-allowed; }
+
+    #prompt {
+      margin-top: 18px;
+      background: #263d6a;
+      border-radius: 10px;
+      padding: 18px;
+      width: 90%;
+      max-width: 360px;
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+      min-height: 32px;
+    }
+    #countdown { margin-top: 8px; font-size: 16px; color: #a0c4ff; }
+    #live-reading { margin-top: 8px; font-size: 18px; color: #a0c4ff; }
+
+    table#readings {
+      margin-top: 24px;
+      width: 90%;
+      max-width: 360px;
+      border-collapse: collapse;
+    }
+    table#readings th, table#readings td {
+      border: 1px solid #4a90d9;
+      padding: 6px 8px;
+      font-size: 14px;
+      text-align: center;
+    }
+    /* SN entry - "SN" prefix is fixed, user types digits only */
+    #sn-wrap { display: flex; width: 90%; max-width: 360px; margin-top: 10px; }
+    #sn-prefix {
+      background: #263d6a; border: 2px solid #4a90d9; border-right: none;
+      border-radius: 10px 0 0 10px; padding: 0 12px; font-size: 20px;
+      font-weight: bold; display: flex; align-items: center; color: #a0c4ff;
+    }
+    #sn-input {
+      flex: 1; min-width: 0; background: #0f1a2e; color: white;
+      border: 2px solid #4a90d9; border-radius: 0 10px 10px 0;
+      padding: 12px; font-size: 20px;
+    }
+    #sn-tag { margin-top: 6px; font-size: 14px; color: #a0c4ff; }
+
+    /* same green as the highlighted terminals */
+    #prompt.done { border: 3px solid #00ff55; box-shadow: 0 0 10px 3px #00ff55; }
+    #prompt small { display: block; font-size: 13px; font-weight: normal; color: #a0c4ff; margin-top: 6px; word-break: break-all; }
+    .small-btn {
+      margin-top: 20px; background: #4a90d9; color: white; border: none;
+      padding: 10px 28px; font-size: 16px; border-radius: 10px; cursor: pointer;
+    }
+    #save-btn { background: #1e8f4e; border: 3px solid #00ff55; box-shadow: 0 0 10px 3px #00ff55; font-weight: bold; }
+
+    .redo-btn {
+      background: #c9742e;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div style="width:90%;max-width:360px;text-align:right;margin-bottom:6px;">
+    <a href="/" style="color:#a0c4ff;text-decoration:none;font-size:13px;">&larr; Live Reading</a>
+  </div>
+  <h2>Ohms Test</h2>
+
+  <div id="diagram-wrap"></div>
+  <div id="progress"></div>
+  <div id="sn-tag"></div>
+
+  <div id="sn-wrap">
+    <span id="sn-prefix">SN</span>
+    <input id="sn-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" oninput="onSnInput()">
+  </div>
+
+  <div id="count-select">
+    <button class="count-btn" data-n="1" onclick="selectCount(1)">1</button>
+    <button class="count-btn" data-n="2" onclick="selectCount(2)">2</button>
+    <button class="count-btn" data-n="3" onclick="selectCount(3)">3</button>
+  </div>
+  <button id="start-btn" disabled onclick="startTest()">Start Test</button>
+
+  <div id="prompt" style="display:none;"></div>
+  <div id="countdown"></div>
+  <div id="live-reading"></div>
+  <button id="save-btn" class="small-btn" style="display:none;" onclick="saveTest()">Save Test</button>
+  <button id="new-btn" class="small-btn" style="display:none;" onclick="location.reload()">New Test</button>
+
+  <table id="readings"></table>
+
+  <script>
+    // Circular layout matching the real photographed head: 3 element
+    // pairs spaced around the circle, black screw on the left / red on
+    // the right within each pair (relative to the spoke direction), and
+    // GND fixed at the 6 o'clock position. "1" = 12 o'clock (top),
+    // "2"/"3" fill the rest of the circle - used for highlighting the
+    // specific pair during the walkthrough.
+    //
+    // The count-selection grayout (applyGrayout) is a SEPARATE preview
+    // layer, not derived from this mapping - a 1-element probe is
+    // physically wired to one specific pair of terminals, a 2-element
+    // probe to a different two - that's a real wiring convention for
+    // this head, not just "the first N elements" (confirmed with the
+    // user 2026-10-22).
+    var CENTER_X = 110, CENTER_Y = 110, RADIUS = 85;
+    // Mirrored layout, 8 terminals total (2 GND + 3 black + 3 red), all
+    // evenly spaced 45 degrees apart: GND at 12 and 6 o'clock (the axis
+    // of symmetry), red terminals on the right half (1:30/3/4:30
+    // o'clock), black mirrored on the left half (10:30/9/7:30). Physical
+    // position "1" = top pair (nearest 12 o'clock GND), "2" = equator
+    // pair, "3" = bottom pair (nearest 6 o'clock GND) - matches
+    // "top = element 1" confirmed 2026-10-22, and is what
+    // GRAYOUT_ACTIVE/LOGICAL_TO_PHYSICAL below already assume.
+    var GND_ANGLES = [-90, 90]; // 12 o'clock, 6 o'clock
+    var PHYSICAL_POSITIONS = {
+      "1": { black: -135, red: -45 }, // top: 10:30 / 1:30
+      "2": { black: 180, red: 0 },    // equator: 9 / 3
+      "3": { black: 135, red: 45 },   // bottom: 7:30 / 4:30
+    };
+
+    function polar(cx, cy, r, angleDeg) {
+      var rad = (angleDeg * Math.PI) / 180;
+      return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+    }
+
+    function buildDiagram() {
+      var wrap = document.getElementById('diagram-wrap');
+      wrap.innerHTML = '';
+      var ring = document.createElement('div');
+      ring.id = 'diagram-ring';
+      wrap.appendChild(ring);
+      Object.keys(PHYSICAL_POSITIONS).forEach(function (pos) {
+        var angles = PHYSICAL_POSITIONS[pos];
+        var blackPos = polar(CENTER_X, CENTER_Y, RADIUS, angles.black);
+        var redPos = polar(CENTER_X, CENTER_Y, RADIUS, angles.red);
+        addNode(wrap, 'node-' + pos + '-black', blackPos[0], blackPos[1], 'black', pos);
+        addNode(wrap, 'node-' + pos + '-red', redPos[0], redPos[1], 'red', pos);
+      });
+      GND_ANGLES.forEach(function (angle, i) {
+        var gndPos = polar(CENTER_X, CENTER_Y, RADIUS, angle);
+        addNode(wrap, 'node-GND-' + i, gndPos[0], gndPos[1], 'gnd', 'GND');
+      });
+    }
+
+    // Which physical ring position stays active (not dimmed) per element
+    // count - the real wiring convention for this head, not a derived
+    // subset.
+    var GRAYOUT_ACTIVE = {
+      1: ["2"],           // 1-element probe -> middle position only
+      2: ["1", "3"],      // 2-element probe -> top + bottom (middle unused)
+      3: ["1", "2", "3"], // 3-element probe -> all three
+    };
+
+    // Translates a LOGICAL element label from the backend's
+    // PAIR_SEQUENCES (always "1"/"2"/[3]) into the PHYSICAL ring position
+    // to actually highlight - these differ per element count (confirmed
+    // 2026-10-22): a 1-element test's logical "1" is physically the
+    // middle position; a 2-element test's logical "1"/"2" are physically
+    // top/bottom; a 3-element test's logical 1/2/3 map straight across.
+    // Keeps this consistent with GRAYOUT_ACTIVE above instead of the two
+    // drifting independently.
+    var LOGICAL_TO_PHYSICAL = {
+      1: { "1": "2" },
+      2: { "1": "1", "2": "3" },
+      3: { "1": "1", "2": "2", "3": "3" },
+    };
+
+    function physicalPosition(logicalLabel) {
+      if (logicalLabel === 'GND') return 'GND';
+      var table = LOGICAL_TO_PHYSICAL[selectedCount];
+      return (table && table[logicalLabel]) || logicalLabel;
+    }
+
+    function applyGrayout(n) {
+      ["1", "2", "3"].forEach(function (el) {
+        var active = GRAYOUT_ACTIVE[n].indexOf(el) !== -1;
+        ['black', 'red'].forEach(function (c) {
+          var node = document.getElementById('node-' + el + '-' + c);
+          if (node) node.classList.toggle('dimmed', !active);
+        });
+      });
+    }
+
+    function addNode(wrap, id, x, y, cls, label) {
+      var el = document.createElement('div');
+      el.className = 'node ' + cls;
+      el.id = id;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.title = label;
+      wrap.appendChild(el);
+    }
+    buildDiagram();
+
+    function highlightPair(label) {
+      document.querySelectorAll('.node').forEach(function (n) { n.classList.remove('active'); });
+      if (!label) return;
+      var parts = label.split('-');
+      if (parts[0] === parts[1]) {
+        // self-pair (e.g. "1-1") - checks one element's own loop, so both
+        // its screws (black + red) are the ones the leads actually go on.
+        var pos = physicalPosition(parts[0]);
+        var blk = document.getElementById('node-' + pos + '-black');
+        var red = document.getElementById('node-' + pos + '-red');
+        if (blk) blk.classList.add('active');
+        if (red) red.classList.add('active');
+        return;
+      }
+      // Cross-element or ground pair - minimum-movement rule confirmed
+      // 2026-10-22: the FIRST element's black screw stays as the anchor
+      // (it was just used in the previous step), and whatever it's being
+      // checked against (the second element's red, or GND) is the one
+      // lead that actually moves. Ground pairs light BOTH GND terminals
+      // (2026-10-23) - either one is a valid ground point.
+      var posA = physicalPosition(parts[0]);
+      var anchorBlack = document.getElementById('node-' + posA + '-black');
+      if (anchorBlack) anchorBlack.classList.add('active');
+
+      var posB = physicalPosition(parts[1]);
+      var targets = (posB === 'GND')
+        ? [document.getElementById('node-GND-0'), document.getElementById('node-GND-1')]
+        : [document.getElementById('node-' + posB + '-red')];
+      targets.forEach(function (t) { if (t) t.classList.add('active'); });
+    }
+
+    var selectedCount = null;
+    function selectCount(n) {
+      selectedCount = n;
+      document.querySelectorAll('.count-btn').forEach(function (b) {
+        b.classList.toggle('selected', parseInt(b.dataset.n) === n);
+      });
+      updateStartEnabled();
+      applyGrayout(n);
+    }
+
+    function onSnInput() {
+      var input = document.getElementById('sn-input');
+      input.value = input.value.replace(/\D/g, '');
+      updateStartEnabled();
+    }
+
+    function updateStartEnabled() {
+      document.getElementById('start-btn').disabled =
+        !(selectedCount && document.getElementById('sn-input').value);
+    }
+
+    var currentSession = null;
+    var lastReading = null;
+    var pollRunning = false;
+    var countdownTimer = null;
+
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+    // Always 2 decimal places, 3-digit zero-padded integer part, with the
+    // right SI magnitude prefix (Ω/kΩ/MΩ) based on the actual value -
+    // e.g. 000.00 Ω, 012.34 kΩ, 001.50 MΩ (2026-10-22).
+    function formatOhms(raw) {
+      var v = parseFloat(raw);
+      // Literal "OL"/overload text, or a huge SCPI overload sentinel
+      // (commonly 9.9E+37-ish) - cross-element and ground checks are
+      // SUPPOSED to read open/OL (elements are isolated by design), only
+      // self-checks should show a real value. No realistic TC loop
+      // resistance is anywhere near 100M ohms, so treat that as OL too.
+      if (isNaN(v) || Math.abs(v) >= 1e8) return 'OL';
+      var unit = 'Ω', scaled = v;
+      var absV = Math.abs(v);
+      if (absV >= 1e6) { scaled = v / 1e6; unit = 'MΩ'; }
+      else if (absV >= 1e3) { scaled = v / 1e3; unit = 'kΩ'; }
+      var sign = scaled < 0 ? '-' : '';
+      var fixed = Math.abs(scaled).toFixed(2);
+      var parts = fixed.split('.');
+      var intPart = parts[0].padStart(3, '0');
+      return sign + intPart + '.' + parts[1] + ' ' + unit;
+    }
+
+    // Tight loop, no fixed delay - same pattern as the landing page's
+    // livePollLoop(), polling at the meter's fastest actual rate instead
+    // of an arbitrary interval (2026-10-22: "high reading speed").
+    async function startPolling(sessionId) {
+      currentSession = sessionId;
+      if (pollRunning) return;
+      pollRunning = true;
+      while (currentSession) {
+        var res = await fetch('/measure', { method: 'POST', body: new URLSearchParams({ session: currentSession }) })
+          .then(r => r.json());
+        if (res.ok) {
+          lastReading = res.reply;
+          document.getElementById('live-reading').textContent = 'Live: ' + formatOhms(lastReading);
+        } else {
+          await sleep(500); // avoid hammering on a real error
+        }
+      }
+      pollRunning = false;
+    }
+
+    function stopPolling() {
+      currentSession = null;
+      document.getElementById('live-reading').textContent = '';
+    }
+
+    function startTest() {
+      var snDigits = document.getElementById('sn-input').value;
+      if (!selectedCount || !snDigits) return;
+      fetch('/ohms-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ element_count: selectedCount, serial_digits: snDigits })
+      })
+      .then(r => r.json())
+      .then(function (data) {
+        if (!data.ok) {
+          document.getElementById('prompt').style.display = 'block';
+          document.getElementById('prompt').textContent = data.error;
+          return;
+        }
+        document.getElementById('sn-wrap').style.display = 'none';
+        document.getElementById('count-select').style.display = 'none';
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('prompt').style.display = 'block';
+        renderState(data.state);
+        armCountdown(data.state.stabilize_seconds);
+      });
+    }
+
+    function armCountdown(seconds) {
+      if (countdownTimer) clearInterval(countdownTimer);
+      var remaining = seconds;
+      document.getElementById('countdown').textContent = 'Stabilizing: ' + remaining + 's';
+      countdownTimer = setInterval(function () {
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearInterval(countdownTimer);
+          document.getElementById('countdown').textContent = 'Capturing...';
+          capture();
+        } else {
+          document.getElementById('countdown').textContent = 'Stabilizing: ' + remaining + 's';
+        }
+      }, 1000);
+    }
+
+    function capture() {
+      fetch('/ohms-capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ last_reading: lastReading })
+      })
+      .then(r => r.json())
+      .then(function (data) {
+        if (!data.ok) return;
+        renderState(data.state);
+        if (!data.state.complete && data.state.current_label) {
+          armCountdown(data.state.stabilize_seconds);
+        } else {
+          document.getElementById('countdown').textContent = '';
+        }
+      });
+    }
+
+    function saveTest() {
+      fetch('/ohms-save', { method: 'POST' })
+      .then(r => r.json())
+      .then(function (data) {
+        if (!data.ok) return;
+        renderState(data.state);
+      });
+    }
+
+    function redo(label) {
+      fetch('/ohms-redo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label })
+      })
+      .then(r => r.json())
+      .then(function (data) {
+        if (!data.ok) return;
+        renderState(data.state);
+        armCountdown(data.state.stabilize_seconds);
+      });
+    }
+
+    function renderState(state) {
+      var saved = !!state.saved_filename;
+      // Keep polling after completion so Redo still has a live reading -
+      // only Save releases the meter (2026-10-23).
+      if (state.session && !saved) {
+        if (currentSession !== state.session) startPolling(state.session);
+      } else {
+        stopPolling();
+      }
+
+      highlightPair(state.current_label);
+
+      var prompt = document.getElementById('prompt');
+      var reviewing = state.complete && !state.current_label;
+      prompt.classList.toggle('done', reviewing || saved);
+      if (saved) {
+        prompt.innerHTML = 'Saved<small></small>';
+        prompt.querySelector('small').textContent = state.saved_filename;
+      } else if (state.current_label) {
+        prompt.textContent = 'Leads on ' + state.current_label;
+      } else if (reviewing) {
+        prompt.innerHTML = 'Test complete<small>Review readings, Redo any row, then Save</small>';
+      }
+      document.getElementById('save-btn').style.display = (reviewing && !saved) ? 'inline-block' : 'none';
+      document.getElementById('new-btn').style.display = saved ? 'inline-block' : 'none';
+      document.getElementById('sn-tag').textContent = state.serial || '';
+
+      document.getElementById('progress').textContent =
+        Object.keys(state.readings).length + ' of ' + state.total_pairs + ' logged';
+
+      var table = document.getElementById('readings');
+      table.innerHTML = '';
+      var header = table.insertRow();
+      header.innerHTML = saved ? '<th>Pair</th><th>Reading</th>' : '<th>Pair</th><th>Reading</th><th></th>';
+      (state.pair_labels || []).forEach(function (label) {
+        if (!(label in state.readings)) return;
+        var row = table.insertRow();
+        var redoCell = saved ? '' : '<td><button class="redo-btn" onclick="redo(\'' + label + '\')">Redo</button></td>';
+        row.innerHTML = '<td>' + label + '</td><td>' + formatOhms(state.readings[label]) + '</td>' + redoCell;
+      });
+    }
+  </script>
+</body>
+</html>
