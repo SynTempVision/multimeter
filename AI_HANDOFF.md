@@ -5,6 +5,12 @@ project) to pick up exactly where this session left off.
 
 ---
 
+## >>> Next task (as of 2026-10-23) <<<
+
+Build **Ohms Test v2 Phase 1** - full spec in `docs/ohms_test_v2_plan.md`,
+visual mock in `docs/ohms_test_v2_mock.html` (open in a browser). The plan
+was agreed with the user item by item; build to it, discuss before deviating.
+
 ## What this project is
 
 A standalone Flask webserver on a Raspberry Pi Zero W, running locally on the
@@ -23,9 +29,34 @@ client-side instead of trusting the meter's built-in temperature mode for
 the real measurement.
 
 **Source**: `C:\Users\synte\sandbox\OWON-XDM1241\pi_multimeter\`
-**Deployed to**: `multimeter@172.17.17.130:~/pi_multimeter/` (Pi Zero W,
-hostname `multimeter`, Raspberry Pi OS Lite 32-bit / Debian 13 Trixie),
-running as systemd service `mm-control.service`.
+**Deployed to**: `multimeter@<ip>:~/pi_multimeter/` (Pi Zero W, Raspberry
+Pi OS Lite 32-bit / Debian 13 Trixie), systemd service `mm-control.service`.
+Two units from the same image:
+- `multimeter` - hotspot `MultimeterNode`. On 2026-10-23 it was at
+  `172.17.17.174` via the USB-Ethernet adapter (DHCP, can change - check the
+  router lease list). **No SSH key installed - password auth only.**
+- `multimeter2` - hotspot `MultimeterNode2`, was `172.17.17.115` on
+  Ethernet; SSH key auth set up 10/22. Still on the pre-10/23 ohms page.
+- On either hotspot the Pi is `192.168.225.1` (dashboard `:5000`).
+
+The Pi Zero has ONE usable USB port: it's either the USB-Ethernet adapter
+(wired SSH, no meter) or the meter (testing over the hotspot).
+
+## Pages
+
+- `/` - Live Reading: mV / K-type temperature logging (see README).
+- `/ohms-test` - Ohms Test (`ohms_test.py` + `templates/ohms_test.html`):
+  SN box (fixed "SN" prefix, digits only) + element count 1/2/3 -> meter
+  auto-set to resistance -> per pair a 5 s stabilize countdown with live
+  reading, auto-capture, highlight of the terminals to probe (ground pairs
+  light both GND terminals). Any row has Redo. When all pairs are logged
+  nothing is saved automatically - the session stays open for Redo until
+  the user taps Save Test (`/ohms-save`), which writes
+  `logs/OhmsTest/OhmsTest_SN<digits>_<ts>_<n>.csv` (Serial Number column)
+  and releases the meter. Pair order is a minimum-lead-movement sequence;
+  element -> physical head position mapping differs per count
+  (`LOGICAL_TO_PHYSICAL` in the template). Cross/ground pairs normally read
+  OL (elements are isolated); readings >= 1e8 display as OL.
 
 Read `README.md` in this same directory first - it has the full technical
 reference (routes, SCPI commands, architecture, deploy commands). This file
@@ -33,27 +64,33 @@ is about *how to keep working on it*, not what it does.
 
 ## How to deploy a change
 
-1. Edit `app.py` and/or `templates/index.html` locally.
-2. `scp` the changed file(s) to the Pi:
-   ```
-   scp "C:\Users\synte\sandbox\OWON-XDM1241\pi_multimeter\templates\index.html" multimeter@172.17.17.130:~/pi_multimeter/templates/index.html
-   scp "C:\Users\synte\sandbox\OWON-XDM1241\pi_multimeter\app.py" multimeter@172.17.17.130:~/pi_multimeter/app.py
-   ```
-   **Read-only mode is on** - turn it off first (`pi-setup/README.md`),
-   otherwise the change disappears at the next reboot.
-3. Restart the service so it's picked up:
-   ```
-   ssh multimeter@172.17.17.130
-   sudo systemctl restart mm-control.service
-   ```
-4. **`scp` needs a password typed interactively** - the assistant running
-   this can't type it, so hand the exact `scp`/`ssh` commands back to the
-   user every single time a file changes, without waiting to be asked. This
-   was explicit, repeated feedback in the prior session ("i need scp
-   comamnds. you awlays leave those out").
-5. The page sends `Cache-Control: no-store`, so there's no browser-caching
-   confusion after a redeploy - if something "doesn't work" right after a
-   push, suspect a missed `scp`/restart step before suspecting the code.
+Use `deploy.ps1` - the user runs it in **their own PowerShell window** (sudo
+prompts need a real terminal; with no SSH key it also asks the SSH password
+at each step):
+```
+cd C:\Users\synte\sandbox\OWON-XDM1241\pi_multimeter
+.\deploy.ps1 -PiHost <ip>                 # 192.168.225.1 on the hotspot
+.\deploy.ps1 -PiHost <ip> -SkipReenable   # leave read-only off for more edits
+```
+It: checks `/proc/cmdline` -> if `overlayroot` is on, removes it from
+`cmdline.txt` and reboots -> scp's `app.py`, `ohms_test.py`, both templates
+-> restarts `mm-control.service` -> checks both pages return 200 ->
+re-adds `overlayroot=tmpfs:recurse=0` and reboots -> confirms it's back on.
+If you add a new file, add it to the scp list in the script.
+
+**Read-only (overlayroot) gotcha - this has bitten us:** while overlayroot
+is on, every write goes to RAM and silently vanishes at the next reboot. On
+2026-10-22 several fixes were "deployed" with the overlay unknowingly back
+on and were lost. After any deploy, verify the change actually landed, e.g.
+`curl -s http://<ip>:5000/ohms-test | grep <new-element-id>` (no auth
+needed), and if you deploy by hand, check `cat /proc/cmdline` has no
+`overlayroot` first.
+
+The `Wait-ForPi` step was fixed 10/23 (it crashed on hosts without our SSH
+key) to a TCP port-22 check - not yet exercised on a real deploy, watch it.
+
+The page sends `Cache-Control: no-store`, so if something "doesn't work"
+right after a deploy, suspect the deploy (overlay/restart) before the code.
 
 ## Collaboration style that worked well (follow this)
 
@@ -113,6 +150,24 @@ is about *how to keep working on it*, not what it does.
    describes the current state accurately. Don't assume anything about the
    UI beyond what's in that file and the actual current `index.html` - a lot
    changed fast.
+
+5. **Open as of 2026-10-23:**
+   - Hotspot on unit `multimeter` did not come up after the 10/23 deploy
+     (also not on FIC WiFi). Same class as the 10/19 and 10/22 hotspot
+     drop-outs on both units; power supply is the main suspect. Try a full
+     power cycle; if still down, go in over Ethernet and check `mm-mode` +
+     `systemctl status hostapd`.
+   - `multimeter2` still runs the old ohms page - redeploy when reachable.
+   - Redo-after-DONE -> Save flow not yet tested with the meter attached.
+   - Old `multimeter.php`/`mm_bridge.py` on svhelp not yet removed.
+   - CSV filenames use the Pi clock (no RTC/NTP on the hotspot) so the names
+     are wrong; timestamps inside come from the browser and are right.
+
+## Git
+
+Repo: https://github.com/SynTempVision/multimeter. **Never add a Claude
+Co-Authored-By line or any AI attribution to commits.** Pull before
+starting, push when done (the user works from both work and home).
 
 ## If rebuilding from scratch
 
