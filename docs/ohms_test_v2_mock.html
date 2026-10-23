@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ohms Test Mock v2</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #0f1a2e; color: white; margin: 0; padding: 16px; }
+    .screens { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; align-items: flex-start; }
+    .screen {
+      background: #1a2b4a; width: 360px; border-radius: 16px; padding: 16px 12px 24px;
+      display: flex; flex-direction: column; align-items: center; box-sizing: border-box;
+    }
+    .caption { color: #ffd479; font-size: 13px; text-align: center; margin-bottom: 10px; min-height: 32px; }
+    .tabs { display: flex; gap: 6px; width: 100%; margin-bottom: 8px; }
+    .tab { flex: 1; text-align: center; padding: 8px 0; border-radius: 8px; background: #263d6a; color: #a0c4ff; font-size: 13px; }
+    .tab.on { background: #4a90d9; color: white; font-weight: bold; }
+    h2 { margin: 6px 0 12px; font-size: 22px; letter-spacing: 1px; }
+
+    /* bigger head: 300px */
+    .diagram-wrap { position: relative; width: 300px; height: 300px; margin-bottom: 8px; }
+    .diagram-ring {
+      position: absolute; left: 8px; top: 8px; width: 284px; height: 284px;
+      border: 5px solid #000; border-radius: 50%; box-sizing: border-box;
+    }
+    .center {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: 170px; text-align: center;
+    }
+    .center .reading { font-size: 30px; font-weight: bold; font-variant-numeric: tabular-nums; }
+    .center .sub { font-size: 14px; color: #a0c4ff; margin-top: 6px; }
+    .center .pair { font-size: 15px; color: #a0c4ff; margin-bottom: 6px; }
+    .node {
+      position: absolute; width: 52px; height: 52px; margin-left: -26px; margin-top: -26px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-weight: bold; color: white; border: 3px solid #1a2b4a;
+      box-shadow: inset 0 0 0 3px rgba(0,0,0,0.25);
+    }
+    .node::after { content: ""; width: 60%; height: 4px; background: rgba(0,0,0,0.5); border-radius: 2px; }
+    .node.red::after { display: none; }
+    .node.red::before { content: "+"; font-size: 28px; line-height: 1; color: rgba(0,0,0,0.6); }
+    .node.red { background: #c0392b; }
+    .node.black { background: #2c2c2c; }
+    .node.gnd { background: #5a5a5a; }
+    .node.gnd::after { content: attr(data-label); width: auto; height: auto; background: none; font-size: 12px; color: white; }
+    .node.active { border-color: #00ff55; box-shadow: inset 0 0 0 3px rgba(0,0,0,0.25), 0 0 12px 4px #00ff55; }
+    .node.dimmed { opacity: 0.25; }
+
+    .progress { color: #a0c4ff; font-size: 15px; }
+    .sn-tag { margin-top: 4px; font-size: 14px; color: #a0c4ff; }
+
+    .sn-block { width: 100%; position: relative; margin-top: 6px; }
+    .sn-row { display: flex; }
+    .sn-prefix { background: #263d6a; border: 2px solid #4a90d9; border-right: none; border-radius: 10px 0 0 10px; padding: 0 12px; font-size: 20px; font-weight: bold; display: flex; align-items: center; color: #a0c4ff; }
+    .sn-input { flex: 1; min-width: 0; background: #0f1a2e; color: white; border: 2px solid #4a90d9; border-radius: 0 10px 10px 0; padding: 12px; font-size: 20px; }
+    .sn-row .caret { position: absolute; right: 14px; top: 14px; color: #a0c4ff; }
+    .dropdown { background: #0f1a2e; border: 2px solid #4a90d9; border-top: none; border-radius: 0 0 10px 10px; margin-left: 54px; }
+    .dropdown div { padding: 10px 12px; font-size: 16px; border-top: 1px solid #263d6a; }
+    .dropdown div:first-child { background: #263d6a; }
+    .dropdown .hint { font-size: 11px; color: #a0c4ff; float: right; margin-top: 3px; }
+
+    .count-select { display: flex; gap: 12px; margin-top: 12px; }
+    .count-btn { background: #263d6a; border: 2px solid #4a90d9; color: white; font-size: 20px; font-weight: bold; border-radius: 10px; width: 56px; height: 56px; }
+    .count-btn.selected { background: #4a90d9; }
+    .big-btn { margin-top: 16px; background: #4a90d9; color: white; border: none; padding: 16px 50px; font-size: 20px; border-radius: 12px; width: 90%; }
+    .small-btn { margin-top: 14px; background: #4a90d9; color: white; border: none; padding: 10px 28px; font-size: 16px; border-radius: 10px; }
+    .small-btn.save { background: #1e8f4e; border: 3px solid #00ff55; box-shadow: 0 0 10px 3px #00ff55; font-weight: bold; }
+    .btn-row { display: flex; gap: 12px; margin-top: 14px; }
+    .btn-row .small-btn { margin-top: 0; min-width: 110px; }
+    .small-btn:disabled { background: #2e3f5c; color: #7a8aa8; border: 3px solid transparent; }
+    .small-btn.saved { background: #1e8f4e; border: 3px solid transparent; box-shadow: none; }
+
+    .prompt { margin-top: 10px; background: #263d6a; border-radius: 10px; padding: 14px; width: 90%; text-align: center; font-size: 22px; font-weight: bold; box-sizing: border-box; }
+    .prompt.done { border: 2px solid #00ff55; box-shadow: 0 0 8px 2px #00ff55; width: auto; padding: 8px 18px; font-size: 16px; }
+    .prompt small { display: block; font-size: 12px; font-weight: normal; color: #a0c4ff; margin-top: 3px; }
+
+    table { margin-top: 16px; border-collapse: collapse; }
+    th, td { border: 1px solid #4a90d9; padding: 6px 8px; font-size: 13px; text-align: center; white-space: nowrap; }
+    .redo-btn { background: #c9742e; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-size: 13px; }
+
+    /* history */
+    .hist-head { width: 100%; font-size: 15px; margin: 14px 0 0; color: #a0c4ff; }
+    .hist-head b { color: white; }
+    .scroll { width: 100%; overflow-x: auto; }
+    .scroll table { margin-top: 8px; }
+    .dl-btn { margin-top: 14px; background: #263d6a; border: 2px solid #4a90d9; color: white; padding: 8px 18px; font-size: 14px; border-radius: 8px; }
+    table.hist { width: 100%; table-layout: fixed; }
+    table.hist th, table.hist td { padding: 6px 2px; font-size: 13px; }
+    table.hist th:first-child, table.hist td:first-child { width: 58px; }
+    table.hist th span { font-weight: normal; font-size: 11px; color: #a0c4ff; }
+    .dl-btn:disabled { opacity: 0.4; }
+    .note { font-size: 11px; color: #ffd479; margin-top: 6px; text-align: center; }
+    /* single-screen controls bar */
+    .controls { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .sn-stepper { display: flex; width: 100%; gap: 6px; align-items: stretch; }
+    .arrow { background: #263d6a; border: 2px solid #4a90d9; color: white; font-size: 22px; border-radius: 10px; width: 48px; }
+    .sn-stepper .sn-row { flex: 1; position: relative; }
+    .row2 { display: flex; gap: 10px; align-items: center; }
+    .row2 .count-btn { width: 50px; height: 50px; }
+    .row2 .count-btn, .count-select { margin-top: 0; }
+    .start-sm { background: #4a90d9; color: white; border: none; border-radius: 10px; padding: 0 22px; height: 50px; font-size: 18px; font-weight: bold; }
+    .locked { opacity: 0.4; pointer-events: none; }
+    .dropdown.float { position: absolute; left: 0; right: 0; top: 100%; z-index: 2; margin-left: 52px; }
+  </style>
+</head>
+<body>
+<div class="screens">
+
+  <!-- A. Ready -->
+  <div class="screen">
+    <div class="caption">A. Ready: SN + count + Start all on the test screen. ◂ ▸ step SN −1/+1, ▼ = recent SNs</div>
+    <div class="tabs"><div class="tab">Live Reading</div><div class="tab on">Ohms Test</div><div class="tab">History</div></div>
+    <div class="controls">
+      <div class="sn-stepper">
+        <button class="arrow">◂</button>
+        <div class="sn-row"><span class="sn-prefix">SN</span><input class="sn-input" value="10483"><span class="caret">▼</span></div>
+        <button class="arrow">▸</button>
+      </div>
+      <div class="row2">
+        <button class="count-btn">1</button><button class="count-btn selected">2</button><button class="count-btn">3</button>
+        <button class="start-sm">Start</button>
+      </div>
+    </div>
+    <div class="diagram-wrap" data-count="2"
+         data-center='<div class="reading">—</div><div class="sub">Pick SN + count, Start</div>'></div>
+  </div>
+
+  <!-- A2. Dropdown open -->
+  <div class="screen">
+    <div class="caption">A (dropdown open): tap ▼ to pick a recent SN</div>
+    <div class="tabs"><div class="tab">Live Reading</div><div class="tab on">Ohms Test</div><div class="tab">History</div></div>
+    <div class="controls">
+      <div class="sn-stepper">
+        <button class="arrow">◂</button>
+        <div class="sn-row"><span class="sn-prefix">SN</span><input class="sn-input" value="10483"><span class="caret">▼</span>
+          <div class="dropdown float">
+            <div>10482 <span class="hint">last used</span></div>
+            <div>10481</div>
+            <div>10479</div>
+            <div>10477</div>
+          </div>
+        </div>
+        <button class="arrow">▸</button>
+      </div>
+      <div class="row2">
+        <button class="count-btn">1</button><button class="count-btn selected">2</button><button class="count-btn">3</button>
+        <button class="start-sm">Start</button>
+      </div>
+    </div>
+    <div class="diagram-wrap" data-count="2"></div>
+  </div>
+
+  <!-- B. Testing -->
+  <div class="screen">
+    <div class="caption">B. Testing: SN/count/Start locked (greyed) until DONE</div>
+    <div class="tabs"><div class="tab">Live Reading</div><div class="tab on">Ohms Test</div><div class="tab">History</div></div>
+    <div class="controls locked">
+      <div class="sn-stepper">
+        <button class="arrow">◂</button>
+        <div class="sn-row"><span class="sn-prefix">SN</span><input class="sn-input" value="10483"><span class="caret">▼</span></div>
+        <button class="arrow">▸</button>
+      </div>
+      <div class="row2">
+        <button class="count-btn">1</button><button class="count-btn selected">2</button><button class="count-btn">3</button>
+        <button class="start-sm">Start</button>
+      </div>
+    </div>
+    <div class="diagram-wrap" data-count="2" data-active="1-black,GND-0,GND-1"
+         data-center='<div class="pair">Leads on 1-GND</div><div class="reading">OL</div><div class="sub">Capturing in 3s</div>'></div>
+    <div class="progress">2 of 5 logged</div>
+    <table>
+      <tr><th>Pair</th><th>Reading</th><th></th></tr>
+      <tr><td>1-1</td><td>012.47 Ω</td><td><button class="redo-btn">Redo</button></td></tr>
+      <tr><td>1-2</td><td>OL</td><td><button class="redo-btn">Redo</button></td></tr>
+    </table>
+  </div>
+
+  <!-- C. Done -->
+  <div class="screen">
+    <div class="caption">C. DONE: Redo any row, Save. Next clears the table, SN +1, ready to Start again</div>
+    <div class="tabs"><div class="tab">Live Reading</div><div class="tab on">Ohms Test</div><div class="tab">History</div></div>
+    <div class="controls locked">
+      <div class="sn-stepper">
+        <button class="arrow">◂</button>
+        <div class="sn-row"><span class="sn-prefix">SN</span><input class="sn-input" value="10483"><span class="caret">▼</span></div>
+        <button class="arrow">▸</button>
+      </div>
+      <div class="row2">
+        <button class="count-btn">1</button><button class="count-btn selected">2</button><button class="count-btn">3</button>
+        <button class="start-sm">Start</button>
+      </div>
+    </div>
+    <div class="diagram-wrap" data-count="2"
+         data-center='<div class="reading">012.51 Ω</div><div class="sub">Live</div>'></div>
+    <div class="prompt done">DONE</div>
+    <div class="btn-row"><button class="small-btn save">Save</button><button class="small-btn" disabled>Next ▸</button></div>
+    <table>
+      <tr><th>Pair</th><th>Reading</th><th></th></tr>
+      <tr><td>1-1</td><td>012.47 Ω</td><td><button class="redo-btn">Redo</button></td></tr>
+      <tr><td>1-2</td><td>OL</td><td><button class="redo-btn">Redo</button></td></tr>
+      <tr><td>1-GND</td><td>OL</td><td><button class="redo-btn">Redo</button></td></tr>
+      <tr><td>2-GND</td><td>OL</td><td><button class="redo-btn">Redo</button></td></tr>
+      <tr><td>2-2</td><td>012.39 Ω</td><td><button class="redo-btn">Redo</button></td></tr>
+    </table>
+  </div>
+
+  <!-- 4. History -->
+  <div class="screen">
+    <div class="caption">D. History: same ◂ SN ▼ ▸ picker. Pairs down the side, tests across, fits the screen (3 newest; older/newer to page)</div>
+    <div class="tabs"><div class="tab">Live Reading</div><div class="tab">Ohms Test</div><div class="tab on">History</div></div>
+    <div class="controls">
+      <div class="sn-stepper">
+        <button class="arrow">◂</button>
+        <div class="sn-row"><span class="sn-prefix">SN</span><input class="sn-input" value="10482"><span class="caret">▼</span></div>
+        <button class="arrow">▸</button>
+      </div>
+    </div>
+    <div class="hist-head"><b>SN10482</b> · 5 tests · 2 elements</div>
+    <table class="hist">
+      <tr><th>Pair</th><th>10/23<br><span>10:15</span></th><th>10/21<br><span>14:02</span></th><th>10/20<br><span>09:40</span></th></tr>
+      <tr><td>1-1</td><td>12.47 Ω</td><td>12.51 Ω</td><td>12.49 Ω</td></tr>
+      <tr><td>1-2</td><td>OL</td><td>OL</td><td>2.30 MΩ</td></tr>
+      <tr><td>1-GND</td><td>OL</td><td>OL</td><td>OL</td></tr>
+      <tr><td>2-GND</td><td>OL</td><td>OL</td><td>OL</td></tr>
+      <tr><td>2-2</td><td>12.39 Ω</td><td>12.40 Ω</td><td>12.38 Ω</td></tr>
+    </table>
+    <div class="btn-row"><button class="dl-btn" style="margin:0" disabled>◂ Newer</button><span style="align-self:center;font-size:13px;color:#a0c4ff">1–3 of 5</span><button class="dl-btn" style="margin:0">Older ▸</button></div>
+    <button class="dl-btn">Download CSV for SN10482</button>
+  </div>
+
+</div>
+<script>
+  var C = 150, R = 118;
+  var POS = { "1": { black: -135, red: -45 }, "2": { black: 180, red: 0 }, "3": { black: 135, red: 45 } };
+  var GRAYOUT_ACTIVE = { 1: ["2"], 2: ["1", "3"], 3: ["1", "2", "3"] };
+  function polar(a) { var r = a * Math.PI / 180; return [C + R * Math.cos(r), C + R * Math.sin(r)]; }
+  function node(wrap, key, cls, a, dim, active, label) {
+    var p = polar(a), el = document.createElement('div');
+    el.className = 'node ' + cls + (dim ? ' dimmed' : '') + (active.indexOf(key) !== -1 ? ' active' : '');
+    el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px';
+    if (label) el.dataset.label = label;
+    wrap.appendChild(el);
+  }
+  document.querySelectorAll('.diagram-wrap').forEach(function (wrap) {
+    var n = +wrap.dataset.count, active = (wrap.dataset.active || '').split(',');
+    var ring = document.createElement('div'); ring.className = 'diagram-ring'; wrap.appendChild(ring);
+    Object.keys(POS).forEach(function (p) {
+      var dim = GRAYOUT_ACTIVE[n].indexOf(p) === -1;
+      node(wrap, p + '-black', 'black', POS[p].black, dim, active);
+      node(wrap, p + '-red', 'red', POS[p].red, dim, active);
+    });
+    [-90, 90].forEach(function (a, i) { node(wrap, 'GND-' + i, 'gnd', a, false, active, 'GND' + (i + 1)); });
+    if (wrap.dataset.center) {
+      var c = document.createElement('div'); c.className = 'center'; c.innerHTML = wrap.dataset.center; wrap.appendChild(c);
+    }
+  });
+</script>
+</body>
+</html>
